@@ -7,8 +7,10 @@ import datetime
 import re
 import shutil
 import configparser
+import tempfile
 
 from lxml import html
+from PyPDF2 import PdfFileReader, PdfFileWriter
 
 def parse_date(date_string):
     return datetime.datetime.strptime(date_string, '%d.%m.%Y').date()
@@ -21,6 +23,9 @@ class Bill():
         self.price = price
         self.due_date = due_date
         self.pdf_url = pdf_url
+
+    def __str__(self):
+        return str(self.period[0].year) + "-" + str(self.period[0].month)
 
 class SaltScraper():
 
@@ -80,17 +85,35 @@ class SaltScraper():
             if bill.period[0].year == year and bill.period[0].month == month:
                 return bill
 
-    def download_bill(self, bill, file_name):
-        f = open(file_name, 'wb')
+    def download_bill(self, bill, fileobj):
         r = self.session.get(bill.pdf_url, stream=True)
-        shutil.copyfileobj(r.raw, f)
-        f.close()
+        shutil.copyfileobj(r.raw, fileobj)
+
+    def get_payment_detail_pdf(self, src, dest, page=3):
+        pdf_reader = PdfFileReader(src)
+        pdf_writer = PdfFileWriter()
+        pdf_writer.addPage(pdf_reader.getPage(page))
+        pdf_writer.write(dest)
+
 
 if __name__ == '__main__':
     cfg = configparser.ConfigParser()
     cfg.read("config.cfg")
     s = SaltScraper(cfg.get('DEFAULT', 'username'), cfg.get('DEFAULT', 'password'))
+
     s.login()
-    s.get_bills()
-    bill = s.get_bill_by_month(2018, 5)
-    s.download_bill(bill, "2018_05.pdf")
+    bills = s.get_bills()
+    from_date = datetime.date(2018, 5, 1)
+    for bill in bills:
+        print("{} - {}: {} (pay until {})".format(bill.period[0], bill.period[1], bill.price, bill.due_date))
+        if bill.period[0] > from_date:
+            print("  -> download bill {}".format(bill))
+            with tempfile.TemporaryFile() as f:
+                s.download_bill(bill, f)
+                f.seek(0)
+                with open(str(bill) + ".pdf", "wb") as output:
+                    # format changed in june 18
+                    if bill.period[0] < datetime.date(2018, 6, 1):
+                        s.get_payment_detail_pdf(f, output, page=1)
+                    else:
+                        s.get_payment_detail_pdf(f, output)
