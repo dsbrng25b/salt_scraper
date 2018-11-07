@@ -8,6 +8,7 @@ import re
 import shutil
 import configparser
 import tempfile
+import logging
 
 from lxml import html
 from PyPDF2 import PdfFileReader, PdfFileWriter
@@ -97,17 +98,22 @@ class SaltScraper():
 
 
 if __name__ == '__main__':
+    logging.basicConfig(format='%(asctime)s %(name)s %(levelname)s  %(message)s', level=logging.INFO)
     cfg = configparser.ConfigParser()
     cfg.read("config.cfg")
     s = SaltScraper(cfg.get('DEFAULT', 'username'), cfg.get('DEFAULT', 'password'))
 
+    logging.info("login")
     s.login()
+
+    logging.info("get bills")
     bills = s.get_bills()
     from_date = datetime.date(2018, 5, 1)
+
     for bill in bills:
-        print("{} - {}: {} (pay until {})".format(bill.period[0], bill.period[1], bill.price, bill.due_date))
+        logging.info("{} - {}: {} (pay until {})".format(bill.period[0], bill.period[1], bill.price, bill.due_date))
         if bill.period[0] > from_date:
-            print("  -> download bill {}".format(bill))
+            logging.info("  -> download bill {}".format(bill))
             with tempfile.TemporaryFile() as f:
                 s.download_bill(bill, f)
                 f.seek(0)
